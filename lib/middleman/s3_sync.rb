@@ -25,6 +25,8 @@ module Middleman
       attr_accessor :mm_resources
       attr_reader   :app
 
+      THREADS_COUNT = 8
+
       def sync()
         @app ||= ::Middleman::Application.new
 
@@ -94,6 +96,7 @@ module Middleman
 
       def connection
         connection_options = {
+          :endpoint => s3_sync_options.endpoint,
           :region => s3_sync_options.region,
           :path_style => s3_sync_options.path_style
         }
@@ -103,11 +106,16 @@ module Middleman
             :aws_access_key_id => s3_sync_options.aws_access_key_id,
             :aws_secret_access_key => s3_sync_options.aws_secret_access_key
           })
+
+          # If using a assumed role
+          connection_options.merge!({
+            :aws_session_token => s3_sync_options.aws_session_token
+          }) if s3_sync_options.aws_session_token
         else
           connection_options.merge!({ :use_iam_profile => true })
         end
 
-        @connection ||= Fog::Storage::AWS.new(connection_options)
+        @connection ||= Fog::AWS::Storage.new(connection_options)
       end
 
       def remote_resource_for_path(path)
@@ -143,33 +151,25 @@ module Middleman
       end
 
       def create_resources
-        files_to_create.each do |r|
-          r.create!
-        end
+        Parallel.map(files_to_create, in_threads: THREADS_COUNT, &:create!)
       end
 
       def update_resources
-        files_to_update.each do |r|
-          r.update!
-        end
+        Parallel.map(files_to_update, in_threads: THREADS_COUNT, &:update!)
       end
 
       def delete_resources
-        files_to_delete.each do |r|
-          r.destroy!
-        end
+        Parallel.map(files_to_delete, in_threads: THREADS_COUNT, &:destroy!)
       end
 
       def ignore_resources
-        files_to_ignore.each do |r|
-          r.ignore!
-        end
+        Parallel.map(files_to_ignore, in_threads: THREADS_COUNT, &:ignore!)
       end
 
       def work_to_be_done?
-        Parallel.each(mm_resources, in_threads: 8, progress: "Processing sitemap") { |mm_resource| add_local_resource(mm_resource) }
+        Parallel.each(mm_resources, in_threads: THREADS_COUNT, progress: "Processing sitemap") { |mm_resource| add_local_resource(mm_resource) }
 
-        Parallel.each(remote_only_paths, in_threads: 8, progress: "Processing remote files") do |remote_path|
+        Parallel.each(remote_only_paths, in_threads: THREADS_COUNT, progress: "Processing remote files") do |remote_path|
           s3_sync_resources[remote_path] ||= S3Sync::Resource.new(nil, remote_resource_for_path(remote_path)).tap(&:status)
         end
 

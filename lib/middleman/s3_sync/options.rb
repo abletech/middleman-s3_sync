@@ -6,6 +6,7 @@ module Middleman
         :http_prefix,
         :acl,
         :bucket,
+        :endpoint,
         :region,
         :aws_access_key_id,
         :aws_secret_access_key,
@@ -22,6 +23,7 @@ module Middleman
         :dry_run,
         :verbose,
         :content_types,
+        :ignore_paths,
         :index_document,
         :error_document
       ]
@@ -65,6 +67,10 @@ module Middleman
 
       def path_style
         (@path_style.nil? ? true : @path_style)
+      end
+
+      def ignore_paths
+        @ignore_paths.nil? ? [] : @ignore_paths
       end
 
       def prefix=(prefix)
